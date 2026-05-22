@@ -1,0 +1,1 @@
+Flex items fail to center vertically within container due to align-items: stretch.

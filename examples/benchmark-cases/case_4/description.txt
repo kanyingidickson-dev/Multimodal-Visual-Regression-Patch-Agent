@@ -1,0 +1,1 @@
+AttributeError when accessing status attribute on a None user response.

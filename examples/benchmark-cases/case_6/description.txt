@@ -1,0 +1,1 @@
+Error text is unreadable due to extremely low contrast foreground and background colors.

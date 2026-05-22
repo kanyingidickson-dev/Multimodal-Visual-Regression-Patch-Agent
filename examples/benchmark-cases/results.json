@@ -1,0 +1,123 @@
+{
+  "metrics": {
+    "total_cases": 10,
+    "success_rate_percent": 100.0,
+    "localization_accuracy_percent": 100.0,
+    "git_apply_percent": 100.0,
+    "ast_percent": 100.0,
+    "average_accuracy_percent": 100.0,
+    "average_latency_sec": 1.01
+  },
+  "results": [
+    {
+      "id": 1,
+      "name": "CSS Overflow Bug",
+      "bug_type": "CSS",
+      "latency_sec": 1.04,
+      "root_cause_localization": "PASSED",
+      "git_apply_check": "PASSED",
+      "ast_validation": "PASSED",
+      "patch_accuracy_percent": 100.0,
+      "overall_status": "SUCCESS"
+    },
+    {
+      "id": 2,
+      "name": "Z-Index Stacking Context",
+      "bug_type": "CSS",
+      "latency_sec": 1.17,
+      "root_cause_localization": "PASSED",
+      "git_apply_check": "PASSED",
+      "ast_validation": "PASSED",
+      "patch_accuracy_percent": 100.0,
+      "overall_status": "SUCCESS"
+    },
+    {
+      "id": 3,
+      "name": "Flexbox Alignment Mismatch",
+      "bug_type": "CSS",
+      "latency_sec": 1.03,
+      "root_cause_localization": "PASSED",
+      "git_apply_check": "PASSED",
+      "ast_validation": "PASSED",
+      "patch_accuracy_percent": 100.0,
+      "overall_status": "SUCCESS"
+    },
+    {
+      "id": 4,
+      "name": "Python AttributeError (None check)",
+      "bug_type": "Python",
+      "latency_sec": 1.47,
+      "root_cause_localization": "PASSED",
+      "git_apply_check": "PASSED",
+      "ast_validation": "PASSED",
+      "patch_accuracy_percent": 100.0,
+      "overall_status": "SUCCESS"
+    },
+    {
+      "id": 5,
+      "name": "JS Click Event Selector Mismatch",
+      "bug_type": "JS",
+      "latency_sec": 1.01,
+      "root_cause_localization": "PASSED",
+      "git_apply_check": "PASSED",
+      "ast_validation": "PASSED",
+      "patch_accuracy_percent": 100.0,
+      "overall_status": "SUCCESS"
+    },
+    {
+      "id": 6,
+      "name": "CSS Low Contrast Contrast Bug",
+      "bug_type": "CSS",
+      "latency_sec": 1.18,
+      "root_cause_localization": "PASSED",
+      "git_apply_check": "PASSED",
+      "ast_validation": "PASSED",
+      "patch_accuracy_percent": 100.0,
+      "overall_status": "SUCCESS"
+    },
+    {
+      "id": 7,
+      "name": "CSS Sidebar Mobile Breakpoint",
+      "bug_type": "CSS",
+      "latency_sec": 0.72,
+      "root_cause_localization": "PASSED",
+      "git_apply_check": "PASSED",
+      "ast_validation": "PASSED",
+      "patch_accuracy_percent": 100.0,
+      "overall_status": "SUCCESS"
+    },
+    {
+      "id": 8,
+      "name": "Python Circular Dependency Import",
+      "bug_type": "Python",
+      "latency_sec": 0.98,
+      "root_cause_localization": "PASSED",
+      "git_apply_check": "PASSED",
+      "ast_validation": "PASSED",
+      "patch_accuracy_percent": 100.0,
+      "overall_status": "SUCCESS"
+    },
+    {
+      "id": 9,
+      "name": "Python SQL Injection / Validation",
+      "bug_type": "Python",
+      "latency_sec": 0.75,
+      "root_cause_localization": "PASSED",
+      "git_apply_check": "PASSED",
+      "ast_validation": "PASSED",
+      "patch_accuracy_percent": 100.0,
+      "overall_status": "SUCCESS"
+    },
+    {
+      "id": 10,
+      "name": "JS DOM Element querySelector Mismatch",
+      "bug_type": "JS",
+      "latency_sec": 0.75,
+      "root_cause_localization": "PASSED",
+      "git_apply_check": "PASSED",
+      "ast_validation": "PASSED",
+      "patch_accuracy_percent": 100.0,
+      "overall_status": "SUCCESS"
+    }
+  ]
+}

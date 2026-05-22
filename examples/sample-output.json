@@ -1,0 +1,16 @@
+{
+  "summary": "The code contains several runtime errors due to lack of input validation and error handling.",
+  "root_cause": "The main script calls functions with arguments that trigger ZeroDivisionError, IndexError, and AttributeError without any safety checks.",
+  "fix_plan": [
+    "Add zero check in divide function",
+    "Add bounds check in get_item function",
+    "Add type check in process_data function"
+  ],
+  "patch": "diff --git a/app.py b/app.py\nindex 1234567..89abcdef 100644\n--- a/app.py\n+++ b/app.py\n@@ -1,11 +1,17 @@\n def divide(a, b):\n-    return a / b\n+    if b == 0:\n+        return 0\n+    return a / b\n \n def get_item(items, index):\n-    return items[index]\n+    if index < 0 or index >= len(items):\n+        return None\n+    return items[index]\n \n def process_data(data):\n-    return data.split(\",\")\n+    if not isinstance(data, str):\n+        return []\n+    return data.split(\",\")\n \n def main():\n     print(divide(10, 0))\n",
+  "assumptions": [
+    "Returning 0 for division by zero is acceptable",
+    "Returning None for out-of-bounds access is acceptable",
+    "Returning empty list for invalid string processing is acceptable"
+  ],
+  "confidence": "high"
+}

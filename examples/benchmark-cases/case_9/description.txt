@@ -1,0 +1,1 @@
+SQL query parameter user_id is interpolated directly in string format without validation.

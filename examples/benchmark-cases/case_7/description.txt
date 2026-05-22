@@ -1,0 +1,1 @@
+Sidebar has a fixed width on mobile resolutions causing responsive breaks.

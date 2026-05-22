@@ -1,0 +1,1 @@
+Top-level circular import crash between app and circular dependency modules.
