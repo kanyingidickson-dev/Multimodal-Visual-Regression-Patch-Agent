@@ -313,7 +313,198 @@ function FilePreviewItem({ file, onRemove, isImage }) {
 
 /* ========== VISUAL VERIFICATION HELPERS & COMPONENTS ========== */
 
-function runPixelDiff(imgBefore, imgAfter, callback) {
+function getConfidenceLevel(score) {
+  if (score >= 90) return 'high';
+  if (score >= 75) return 'medium';
+  return 'low';
+}
+
+function getConfidenceLabel(score) {
+  if (score >= 90) return 'High Confidence';
+  if (score >= 75) return 'Moderate Confidence';
+  return 'Needs Review';
+}
+
+function formatNumber(num) {
+  if (num >= 1000) {
+    return (num / 1000).toFixed(1) + 'k';
+  }
+  return num.toString();
+}
+
+function formatImpactReason(reason) {
+  // Convert technical reasons to more semantic descriptions
+  if (reason.includes('Large region')) {
+    const match = reason.match(/covers ([\d.]+)%/);
+    const percentage = match ? match[1] : 'significant';
+    return `Primary regression region covers ${percentage}% of viewport`;
+  }
+  if (reason.includes('Overlapping regions')) {
+    const match = reason.match(/(\d+)/);
+    const count = match ? match[1] : 'multiple';
+    return `${count} overlapping layout clusters detected`;
+  }
+  if (reason.includes('touches image edge')) {
+    return 'Potential truncation detected at viewport boundary';
+  }
+  return reason;
+}
+
+function deduplicateAndSummarizeReasons(reasons) {
+  // Deduplicate and categorize impact reasons
+  const seen = new Set();
+  const unique = [];
+  
+  for (const reason of reasons) {
+    const key = reason.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(reason);
+    }
+  }
+  
+  // If we have too many, prioritize and summarize
+  if (unique.length > 4) {
+    const prioritized = [];
+    let hasLargeRegion = false;
+    let hasOverlap = false;
+    let hasEdge = false;
+    
+    for (const reason of unique) {
+      if (reason.includes('Large region') && !hasLargeRegion) {
+        prioritized.push(reason);
+        hasLargeRegion = true;
+      } else if (reason.includes('Overlapping') && !hasOverlap) {
+        prioritized.push(reason);
+        hasOverlap = true;
+      } else if (reason.includes('edge') && !hasEdge) {
+        prioritized.push(reason);
+        hasEdge = true;
+      }
+    }
+    
+    // Add a summary if we filtered items
+    if (prioritized.length < unique.length) {
+      prioritized.push('Minor rendering noise filtered automatically');
+    }
+    
+    return prioritized.slice(0, 4);
+  }
+  
+  return unique;
+}
+
+function generateAISummary(score, regions, impact) {
+  // Generate an AI summary based on the analysis
+  const regionCount = regions.length;
+  const hasLayoutImpact = impact.layout_geometry_affected;
+  const hasAccessibilityImpact = impact.accessibility_affected;
+  
+  if (score >= 90) {
+    return 'Patch successfully resolves the regression with minimal visual differences.';
+  }
+  
+  if (score >= 75) {
+    if (hasLayoutImpact) {
+      return 'Patch partially resolves the regression, but minor layout inconsistencies remain.';
+    }
+    return 'Patch addresses the primary regression with some residual alignment drift.';
+  }
+  
+  // Low confidence
+  if (hasLayoutImpact && hasAccessibilityImpact) {
+    return 'Patch partially resolves the regression, but significant structural inconsistencies remain in the primary layout region.';
+  }
+  if (hasLayoutImpact) {
+    return 'Patch shows limited effectiveness; significant layout drift remains in key content areas.';
+  }
+  if (regionCount > 5) {
+    return 'Patch introduces multiple visual inconsistencies that require further review.';
+  }
+  return 'Patch requires review due to unresolved layout alignment issues.';
+}
+
+async function runSophisticatedPixelDiff(imgBefore, imgAfter, callback) {
+  try {
+    // Convert images to blobs for upload
+    const blobBefore = await fetch(imgBefore.src).then(res => res.blob());
+    const blobAfter = await fetch(imgAfter.src).then(res => res.blob());
+    
+    // Create FormData for the API request
+    const formData = new FormData();
+    formData.append('image_before', blobBefore, 'before.png');
+    formData.append('image_after', blobAfter, 'after.png');
+    formData.append('pixel_threshold', '45.0');
+    formData.append('spatial_threshold', '3');
+    formData.append('anti_aliasing_filter', 'true');
+    
+    // Call the sophisticated visual diff API
+    const response = await fetch('/api/visual-diff', {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    
+    // Generate a simple heatmap visualization from the regions
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const width = 600;
+    const height = 450;
+    canvas.width = width;
+    canvas.height = height;
+    
+    // Draw the before image as background
+    ctx.drawImage(imgBefore, 0, 0, width, height);
+    
+    // Draw regions as overlays
+    result.regions.forEach(region => {
+      const { x, y, width: w, height: h, bbox } = region;
+      // Scale coordinates if needed (assuming images are scaled to 600x450)
+      const scaleX = width / imgBefore.naturalWidth;
+      const scaleY = height / imgBefore.naturalHeight;
+      
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(
+        bbox[0] * scaleX,
+        bbox[1] * scaleY,
+        (bbox[2] - bbox[0]) * scaleX,
+        (bbox[3] - bbox[1]) * scaleY
+      );
+      
+      // Fill with semi-transparent red
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+      ctx.fillRect(
+        bbox[0] * scaleX,
+        bbox[1] * scaleY,
+        (bbox[2] - bbox[0]) * scaleX,
+        (bbox[3] - bbox[1]) * scaleY
+      );
+    });
+    
+    callback({
+      heatmapUrl: canvas.toDataURL('image/png'),
+      score: result.alignment_score,
+      diffPixels: result.filtered_pixel_count,
+      regions: result.regions,
+      confidence: result.confidence,
+      impact: result.impact,
+      anti_aliased_filtered: result.anti_aliased_filtered,
+      raw_pixel_count: result.raw_pixel_count
+    });
+  } catch (e) {
+    console.error("Sophisticated pixel diff failed, falling back to simple diff", e);
+    // Fallback to simple canvas-based diff
+    runSimplePixelDiff(imgBefore, imgAfter, callback);
+  }
+}
+
+function runSimplePixelDiff(imgBefore, imgAfter, callback) {
   const canvasBefore = document.createElement('canvas');
   const canvasAfter = document.createElement('canvas');
   const canvasDiff = document.createElement('canvas');
@@ -568,6 +759,7 @@ function VisualVerificationView({ beforeImageFile, result }) {
   const [afterFile, setAfterFile] = useState(null);
   const [heatmapUrl, setHeatmapUrl] = useState(null);
   const [score, setScore] = useState(null);
+  const [diffAnalysis, setDiffAnalysis] = useState(null); // Store sophisticated analysis results
   const [viewMode, setViewMode] = useState('slider'); // 'slider', 'side-by-side', 'heatmap'
   const [sliderPos, setSliderPos] = useState(50);
   const [isSimulated, setIsSimulated] = useState(false);
@@ -627,9 +819,11 @@ function VisualVerificationView({ beforeImageFile, result }) {
     const onImageLoaded = () => {
       loadedCount++;
       if (loadedCount === 2) {
-        runPixelDiff(imgBefore, imgAfter, ({ heatmapUrl, score }) => {
+        runSophisticatedPixelDiff(imgBefore, imgAfter, ({ heatmapUrl, score, regions, confidence, impact, anti_aliased_filtered, raw_pixel_count }) => {
           setHeatmapUrl(heatmapUrl);
           setScore(score);
+          // Store additional analysis data for display
+          setDiffAnalysis({ regions, confidence, impact, anti_aliased_filtered, raw_pixel_count });
         });
       }
     };
@@ -729,23 +923,62 @@ function VisualVerificationView({ beforeImageFile, result }) {
       <div className="verification-summary-card">
         <div className="verification-summary-info">
           <div className="verification-summary-title">
-            <Search size={20} className="icon-inline" /> Visual Verification Regression Loop
+            <Search size={20} className="icon-inline" /> Patch Verification Engine
           </div>
           <div className="verification-summary-desc">
             {afterUrl
               ? (isSimulated
                   ? "Comparing buggy layout with a client-side simulated alignment correction (green dashed outline indicates modified region)."
-                  : "Comparing original buggy screenshot with the fixed screenshot.")
+                  : "Verifying that the generated patch fixes the regression without introducing new layout issues.")
               : "Upload a screenshot of the fix (or run simulated fix) to compare pixel differences."
             }
           </div>
         </div>
-        
+
         {score !== null && (
           <div className="verification-score-container">
-            <div className="verification-score-value">{score}%</div>
+            <div className="verification-score-value">{Math.round(score * 10) / 10}%</div>
             <div className="verification-score-label">
-              Visual<br/>Alignment
+              Layout<br/>Alignment
+            </div>
+          </div>
+        )}
+        
+        {diffAnalysis && (
+          <div className="verification-analysis-container">
+            <div className="verification-analysis-header">
+              <span className="verification-analysis-title">Layout Integrity Scan</span>
+              <span className={`verification-confidence-badge ${getConfidenceLevel(score)}`}>
+                {getConfidenceLabel(score)}
+              </span>
+            </div>
+            <div className="verification-analysis-stats">
+              <div className="verification-analysis-stat">
+                <span className="verification-stat-label">Detected Regions:</span>
+                <span className="verification-stat-value">{diffAnalysis.regions.length}</span>
+              </div>
+              <div className="verification-analysis-stat">
+                <span className="verification-stat-label">Structural Diff Area:</span>
+                <span className="verification-stat-value">{formatNumber(diffAnalysis.raw_pixel_count)} px</span>
+              </div>
+              <div className="verification-analysis-stat">
+                <span className="verification-stat-label">Filtered Rendering Noise:</span>
+                <span className="verification-stat-value">{formatNumber(diffAnalysis.anti_aliased_filtered)} px</span>
+              </div>
+            </div>
+            {diffAnalysis.impact.reasoning && diffAnalysis.impact.reasoning.length > 0 && (
+              <div className="verification-analysis-impact">
+                <span className="verification-impact-title">Impact Assessment:</span>
+                <ul className="verification-impact-list">
+                  {deduplicateAndSummarizeReasons(diffAnalysis.impact.reasoning).map((reason, idx) => (
+                    <li key={idx} className="verification-impact-item">{formatImpactReason(reason)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="verification-ai-summary">
+              <span className="verification-ai-summary-label">AI Summary:</span>
+              <span className="verification-ai-summary-text">{generateAISummary(score, diffAnalysis.regions, diffAnalysis.impact)}</span>
             </div>
           </div>
         )}

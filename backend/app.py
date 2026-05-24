@@ -24,6 +24,7 @@ from slowapi.errors import RateLimitExceeded
 
 from code_reviewer import CodeReviewer
 from patch_utils import PatchValidator, validate_code_content, PatchApplicabilityChecker, ASTValidator, FileGroundingValidator
+from image_processor import ImageProcessor, load_image_from_path
 
 load_dotenv()
 
@@ -89,6 +90,16 @@ class ReviewResponse(BaseModel):
     error: Optional[str] = None
     details: Optional[List[str]] = None
 
+class VisualDiffResponse(BaseModel):
+    alignment_score: float
+    num_regions: int
+    confidence: str
+    regions: List[Dict[str, Any]]
+    impact: Dict[str, Any]
+    filtered_pixel_count: int
+    raw_pixel_count: int
+    anti_aliased_filtered: int
+
 api_router = APIRouter(prefix="/api")
 
 @api_router.get("/health", response_model=HealthResponse)
@@ -98,6 +109,96 @@ async def health():
         model=os.getenv('MODEL_CHOICE', 'gemma-4-31b'),
         mock_mode=reviewer.mock_mode
     )
+
+@api_router.post("/visual-diff", response_model=VisualDiffResponse, dependencies=[Depends(verify_api_key)])
+@limiter.limit("10/minute")
+async def visual_diff(
+    request: Request,
+    image_before: UploadFile = File(...),
+    image_after: UploadFile = File(...),
+    pixel_threshold: float = Form(45.0),
+    spatial_threshold: int = Form(3),
+    anti_aliasing_filter: bool = Form(True)
+):
+    """
+    Perform sophisticated visual diff analysis with region clustering and anti-aliasing filtering.
+    
+    This endpoint implements the advanced pipeline:
+    1. Computes per-pixel delta heatmap
+    2. Applies spatial threshold and region clustering
+    3. Filters anti-aliased differences (font anti-aliasing, small color dithers)
+    4. Assesses layout geometry and accessibility impact
+    5. Returns confidence level based on detected regions
+    """
+    try:
+        temp_dir = tempfile.mkdtemp()
+        
+        try:
+            # Save uploaded images
+            img_before_path = os.path.join(temp_dir, f"before_{image_before.filename}")
+            img_after_path = os.path.join(temp_dir, f"after_{image_after.filename}")
+            
+            with open(img_before_path, "wb") as f:
+                f.write(await image_before.read())
+            with open(img_after_path, "wb") as f:
+                f.write(await image_after.read())
+            
+            # Load images using the image processor
+            def process_images_sync():
+                img1 = load_image_from_path(img_before_path)
+                img2 = load_image_from_path(img_after_path)
+                
+                # Initialize processor with provided parameters
+                processor = ImageProcessor(
+                    pixel_threshold=pixel_threshold,
+                    spatial_threshold=spatial_threshold,
+                    anti_aliasing_filter=anti_aliasing_filter
+                )
+                
+                # Run the full pipeline
+                result = processor.process_images(img1, img2)
+                
+                # Convert regions to serializable format (convert numpy types to native Python)
+                regions_serializable = []
+                for region in result["regions"]:
+                    regions_serializable.append({
+                        "x": int(region.x),
+                        "y": int(region.y),
+                        "width": int(region.width),
+                        "height": int(region.height),
+                        "pixel_count": int(region.pixel_count),
+                        "avg_diff": float(region.avg_diff),
+                        "max_diff": float(region.max_diff),
+                        "bbox": tuple(int(x) for x in region.bbox)
+                    })
+                
+                return {
+                    "alignment_score": float(result["alignment_score"]),
+                    "num_regions": int(result["num_regions"]),
+                    "confidence": result["confidence"],
+                    "regions": regions_serializable,
+                    "impact": result["impact"],
+                    "filtered_pixel_count": int(result["filtered_pixel_count"]),
+                    "raw_pixel_count": int(result["raw_pixel_count"]),
+                    "anti_aliased_filtered": int(result["anti_aliased_filtered"])
+                }
+            
+            # Run image processing in threadpool to avoid blocking
+            diff_result = await run_in_threadpool(process_images_sync)
+            
+            return VisualDiffResponse(**diff_result)
+            
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Exception during visual-diff endpoint: {e}", exc_info=True)
+        if os.getenv("ENVIRONMENT", "development") == "production":
+             raise HTTPException(status_code=500, detail="Internal server error")
+        else:
+             raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/review", response_model=ReviewResponse, dependencies=[Depends(verify_api_key)])
 @limiter.limit("5/minute")
