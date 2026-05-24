@@ -314,18 +314,23 @@ function FilePreviewItem({ file, onRemove, isImage }) {
 /* ========== VISUAL VERIFICATION HELPERS & COMPONENTS ========== */
 
 function getConfidenceLevel(score) {
+  if (score === undefined || score === null || isNaN(score)) return 'low';
   if (score >= 90) return 'high';
   if (score >= 75) return 'medium';
   return 'low';
 }
 
 function getConfidenceLabel(score) {
+  if (score === undefined || score === null || isNaN(score)) return 'Needs Review';
   if (score >= 90) return 'High Confidence';
   if (score >= 75) return 'Moderate Confidence';
   return 'Needs Review';
 }
 
 function formatNumber(num) {
+  if (num === undefined || num === null || isNaN(num)) {
+    return '0';
+  }
   if (num >= 1000) {
     return (num / 1000).toFixed(1) + 'k';
   }
@@ -352,9 +357,13 @@ function formatImpactReason(reason) {
 
 function deduplicateAndSummarizeReasons(reasons) {
   // Deduplicate and categorize impact reasons
+  if (!reasons || !Array.isArray(reasons)) {
+    return [];
+  }
+
   const seen = new Set();
   const unique = [];
-  
+
   for (const reason of reasons) {
     const key = reason.toLowerCase();
     if (!seen.has(key)) {
@@ -362,14 +371,14 @@ function deduplicateAndSummarizeReasons(reasons) {
       unique.push(reason);
     }
   }
-  
+
   // If we have too many, prioritize and summarize
   if (unique.length > 4) {
     const prioritized = [];
     let hasLargeRegion = false;
     let hasOverlap = false;
     let hasEdge = false;
-    
+
     for (const reason of unique) {
       if (reason.includes('Large region') && !hasLargeRegion) {
         prioritized.push(reason);
@@ -382,35 +391,35 @@ function deduplicateAndSummarizeReasons(reasons) {
         hasEdge = true;
       }
     }
-    
+
     // Add a summary if we filtered items
     if (prioritized.length < unique.length) {
       prioritized.push('Minor rendering noise filtered automatically');
     }
-    
+
     return prioritized.slice(0, 4);
   }
-  
+
   return unique;
 }
 
 function generateAISummary(score, regions, impact) {
   // Generate an AI summary based on the analysis
-  const regionCount = regions.length;
-  const hasLayoutImpact = impact.layout_geometry_affected;
-  const hasAccessibilityImpact = impact.accessibility_affected;
-  
+  const regionCount = regions?.length ?? 0;
+  const hasLayoutImpact = impact?.layout_geometry_affected ?? false;
+  const hasAccessibilityImpact = impact?.accessibility_affected ?? false;
+
   if (score >= 90) {
     return 'Patch successfully resolves the regression with minimal visual differences.';
   }
-  
+
   if (score >= 75) {
     if (hasLayoutImpact) {
       return 'Patch partially resolves the regression, but minor layout inconsistencies remain.';
     }
     return 'Patch addresses the primary regression with some residual alignment drift.';
   }
-  
+
   // Low confidence
   if (hasLayoutImpact && hasAccessibilityImpact) {
     return 'Patch partially resolves the regression, but significant structural inconsistencies remain in the primary layout region.';
@@ -955,18 +964,18 @@ function VisualVerificationView({ beforeImageFile, result }) {
             <div className="verification-analysis-stats">
               <div className="verification-analysis-stat">
                 <span className="verification-stat-label">Detected Regions:</span>
-                <span className="verification-stat-value">{diffAnalysis.regions.length}</span>
+                <span className="verification-stat-value">{diffAnalysis?.regions?.length ?? 0}</span>
               </div>
               <div className="verification-analysis-stat">
                 <span className="verification-stat-label">Structural Diff Area:</span>
-                <span className="verification-stat-value">{formatNumber(diffAnalysis.raw_pixel_count)} px</span>
+                <span className="verification-stat-value">{formatNumber(diffAnalysis?.raw_pixel_count ?? 0)} px</span>
               </div>
               <div className="verification-analysis-stat">
                 <span className="verification-stat-label">Filtered Rendering Noise:</span>
-                <span className="verification-stat-value">{formatNumber(diffAnalysis.anti_aliased_filtered)} px</span>
+                <span className="verification-stat-value">{formatNumber(diffAnalysis?.anti_aliased_filtered ?? 0)} px</span>
               </div>
             </div>
-            {diffAnalysis.impact.reasoning && diffAnalysis.impact.reasoning.length > 0 && (
+            {diffAnalysis?.impact?.reasoning && diffAnalysis.impact.reasoning.length > 0 && (
               <div className="verification-analysis-impact">
                 <span className="verification-impact-title">Impact Assessment:</span>
                 <ul className="verification-impact-list">
@@ -978,7 +987,7 @@ function VisualVerificationView({ beforeImageFile, result }) {
             )}
             <div className="verification-ai-summary">
               <span className="verification-ai-summary-label">AI Summary:</span>
-              <span className="verification-ai-summary-text">{generateAISummary(score, diffAnalysis.regions, diffAnalysis.impact)}</span>
+              <span className="verification-ai-summary-text">{generateAISummary(score, diffAnalysis?.regions ?? [], diffAnalysis?.impact ?? {})}</span>
             </div>
           </div>
         )}
